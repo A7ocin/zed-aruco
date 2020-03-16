@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
 
     // Set configuration parameters
     InitParameters init_params;
-    init_params.camera_resolution = RESOLUTION::HD720;
+    init_params.camera_resolution = RESOLUTION::HD2K;
     init_params.coordinate_units = UNIT::METER;
     init_params.sensors_required = false;
 
@@ -70,8 +70,8 @@ int main(int argc, char **argv) {
 
     cv::Matx<float, 4, 1> dist_coeffs = cv::Vec4f::zeros();
 
-    float actual_marker_size_meters = 0.16f; // real marker size in meters
-    auto dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_100);
+    float actual_marker_size_meters = 0.56f; // real marker size in meters
+    auto dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_1000);
 
     cout << "Make sure the ArUco marker is a 6x6 (100), measuring " << actual_marker_size_meters * 1000 << " mm" << endl;
 
@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
     vector<cv::Vec3d> rvecs, tvecs;
     vector<int> ids;
     vector<vector<cv::Point2f> > corners;
-    string position_txt;
+    string position_txt, rotation_txt;
 
     bool can_reset = false;
 
@@ -104,7 +104,7 @@ int main(int argc, char **argv) {
             zed.getPosition(zed_pose);
 
             // display ZED position
-            cv::rectangle(image_ocv_rgb, cv::Point(0, 0), cv::Point(490, 75), cv::Scalar(0, 0, 0), -1);
+            cv::rectangle(image_ocv_rgb, cv::Point(0, 0), cv::Point(800, 100), cv::Scalar(0, 0, 0), -1);
             cv::putText(image_ocv_rgb, "Loaded dictionary : 6x6.     Press 'SPACE' to reset the camera position", cv::Point(10, 15), cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(220, 220, 220));
             position_txt = "ZED  x: " + to_string(zed_pose.pose_data.tx) + "; y: " + to_string(zed_pose.pose_data.ty) + "; z: " + to_string(zed_pose.pose_data.tz);
             cv::putText(image_ocv_rgb, position_txt, cv::Point(10, 35), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(236, 188, 26));
@@ -119,8 +119,17 @@ int main(int argc, char **argv) {
 
                 cv::aruco::drawDetectedMarkers(image_ocv_rgb, corners, ids);
                 cv::aruco::drawAxis(image_ocv_rgb, camera_matrix, dist_coeffs, rvecs[0], tvecs[0], actual_marker_size_meters * 0.5f);
-                position_txt = "Aruco x: " + to_string(pose.tx) + "; y: " + to_string(pose.ty) + "; z: " + to_string(pose.tz);
+                
+                /*sl::Matrix4f inverter = sl::Matrix4f::zeros();
+                inverter.r00 = 1;
+                inverter.r12 = 1;
+                inverter.r21 = 1;
+                inverter.m33 = 1;
+                pose = inverter * pose * inverter;*/
+                position_txt = "Aruco translation x: " + to_string(pose.tx) + "; y: " + to_string(pose.ty) + "; z: " + to_string(pose.tz);
                 cv::putText(image_ocv_rgb, position_txt, cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(124, 252, 124));
+                rotation_txt = "Aruco rotation x: " + to_string(pose.getRotationVector().x) + "; y: " + to_string(pose.getRotationVector().y) + "; z: " + to_string(pose.getRotationVector().z);
+                cv::putText(image_ocv_rgb, rotation_txt, cv::Point(10, 95), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(124, 252, 124));
 
             } else
                 can_reset = false;

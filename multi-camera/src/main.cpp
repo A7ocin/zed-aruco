@@ -42,6 +42,9 @@
 #include "aruco.hpp"
 #include "GLViewer.hpp"
 
+#include "nlohmann/json.hpp"
+using json = nlohmann::json;
+
 // Using std and sl namespaces
 using namespace std;
 using namespace sl;
@@ -77,7 +80,7 @@ GLViewer viewer;
 
 // Sample functions
 void run(vector<CameraData> &zeds, ArucoData &acuroData);
-void tryReloc(CameraData &it, ArucoData &acuroData);
+void tryReloc(CameraData &it, ArucoData &acuroData, json &j);
 void displayMarker(CameraData &it, ArucoData &acuroData);
 void close();
 
@@ -87,6 +90,7 @@ int main(int argc, char **argv) {
     init_params.coordinate_units = UNIT::METER;
     init_params.depth_mode = DEPTH_MODE::ULTRA;
     init_params.sensors_required = false;
+    init_params.camera_resolution = RESOLUTION::HD2K;
 
     // detect nummber of connected ZED camera.
     auto zed_infos = Camera::getDeviceList();
@@ -94,6 +98,7 @@ int main(int argc, char **argv) {
     vector<CameraData> zeds(nb_zeds);
 
     // specify size for the point cloud
+    //Resolution res(720, 404);
     Resolution res(720, 404);
 
     // define Positional Tracking parameters
@@ -102,10 +107,10 @@ int main(int argc, char **argv) {
     tracking_params.enable_imu_fusion = false; // for this sample, IMU (of ZED-M) is disable, we use the gravity given by the marker.
 
     ArucoData acuroData;
-    acuroData.dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_100);
-    acuroData.marker_length = 0.15f; // Size real size of the maker in meter
+    acuroData.dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_1000);
+    acuroData.marker_length = 0.28f; //0.2625f; // 0.558f; // Size real size of the maker in meter
 
-    cout << "Make sure the ArUco marker is a 6x6 (100), measuring " << acuroData.marker_length * 1000 << " mm" << endl;
+    cout << "Make sure the ArUco marker is a 6x6 (1000), measuring " << acuroData.marker_length * 1000 << " mm" << endl;
 
     int nb_zed_open = 0;
     // try to open all  the connected cameras
@@ -178,6 +183,11 @@ void run(vector<CameraData> &zeds, ArucoData &acuroData) {
     RuntimeParameters rt_p;
     // ask for point cloud in World Frame, then they will be displayed with the same reference
     rt_p.measure3D_reference_frame = REFERENCE_FRAME::WORLD;
+    /*rt_p.confidence_threshold = 50;
+    rt_p.sensing_mode = SENSING_MODE::FILL;
+    rt_p.textureness_confidence_threshold = 100;*/
+
+    json j;
 
     while (!quit) {
         for (auto &it : zeds) { // for all camera
@@ -185,7 +195,7 @@ void run(vector<CameraData> &zeds, ArucoData &acuroData) {
                 it.zed.retrieveImage(it.im_left);
                 displayMarker(it, acuroData);
                 if (!it.is_reloc) { // if still ne relocated, grab left image and look for ArUco pattern
-                    tryReloc(it, acuroData);
+                    tryReloc(it, acuroData, j);
                 } else { // if relocated, grab point cloud and draw it
                     it.zed.retrieveMeasure(it.point_cloud, MEASURE::XYZRGBA, MEM::GPU, it.point_cloud.getResolution());
                     viewer.updatePointCloud(it.point_cloud, it.id);
@@ -200,9 +210,11 @@ void run(vector<CameraData> &zeds, ArucoData &acuroData) {
         }
         sleep_ms(1);
     }
+    std::ofstream o("output.json");
+    o << std::setw(4) << j << std::endl;
 }
 
-void tryReloc(CameraData &it, ArucoData &acuroData) {
+void tryReloc(CameraData &it, ArucoData &acuroData, json &j) {
     vector<int> ids;
     vector<vector<cv::Point2f> > corners;
 
@@ -221,7 +233,45 @@ void tryReloc(CameraData &it, ArucoData &acuroData) {
         // reset the ZED Positional tracking with the position given by the marker
         it.zed.resetPositionalTracking(pose);
         it.is_reloc = true;
+
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Z_UP"]["translation_meters"]["tx"] = to_string(pose.tx);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Z_UP"]["translation_meters"]["ty"] = to_string(pose.ty);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Z_UP"]["translation_meters"]["tz"] = to_string(pose.tz);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Z_UP"]["euler_angles_radians"]["x"] = to_string(pose.getEulerAngles().x);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Z_UP"]["euler_angles_radians"]["y"] = to_string(pose.getEulerAngles().y);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Z_UP"]["euler_angles_radians"]["z"] = to_string(pose.getEulerAngles().z);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Z_UP"]["euler_angles_degrees"]["x"] = to_string(pose.getEulerAngles().x * 180.0 / M_PI);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Z_UP"]["euler_angles_degrees"]["y"] = to_string(pose.getEulerAngles().y * 180.0 / M_PI);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Z_UP"]["euler_angles_degrees"]["z"] = to_string(pose.getEulerAngles().z * 180.0 / M_PI);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Z_UP"]["example_applications"] = "Blender";
+        convertCoordinateSystem(pose, COORDINATE_SYSTEM::RIGHT_HANDED_Z_UP, COORDINATE_SYSTEM::LEFT_HANDED_Y_UP);
+        j["zed_" + std::to_string(it.id)]["LEFT_HANDED_Y_UP"]["translation_meters"]["tx"] = to_string(pose.tx);
+        j["zed_" + std::to_string(it.id)]["LEFT_HANDED_Y_UP"]["translation_meters"]["ty"] = to_string(pose.ty);
+        j["zed_" + std::to_string(it.id)]["LEFT_HANDED_Y_UP"]["translation_meters"]["tz"] = to_string(pose.tz);
+        j["zed_" + std::to_string(it.id)]["LEFT_HANDED_Y_UP"]["euler_angles_radians"]["x"] = to_string(pose.getEulerAngles().x - M_PI / 2);
+        j["zed_" + std::to_string(it.id)]["LEFT_HANDED_Y_UP"]["euler_angles_radians"]["y"] = to_string(pose.getEulerAngles().y);
+        j["zed_" + std::to_string(it.id)]["LEFT_HANDED_Y_UP"]["euler_angles_radians"]["z"] = to_string(pose.getEulerAngles().z);
+        j["zed_" + std::to_string(it.id)]["LEFT_HANDED_Y_UP"]["euler_angles_degrees"]["x"] = to_string(double((pose.getEulerAngles().x) - (M_PI / 2)) * 180.0 / M_PI);
+        j["zed_" + std::to_string(it.id)]["LEFT_HANDED_Y_UP"]["euler_angles_degrees"]["y"] = to_string(pose.getEulerAngles().y * 180.0 / M_PI);
+        j["zed_" + std::to_string(it.id)]["LEFT_HANDED_Y_UP"]["euler_angles_degrees"]["z"] = to_string(pose.getEulerAngles().z * 180.0 / M_PI);
+        j["zed_" + std::to_string(it.id)]["LEFT_HANDED_Y_UP"]["example_applications"] = "Unity";
+        convertCoordinateSystem(pose, COORDINATE_SYSTEM::LEFT_HANDED_Y_UP, COORDINATE_SYSTEM::RIGHT_HANDED_Y_UP);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Y_UP"]["translation_meters"]["tx"] = to_string(pose.tx);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Y_UP"]["translation_meters"]["ty"] = to_string(pose.ty);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Y_UP"]["translation_meters"]["tz"] = to_string(pose.tz);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Y_UP"]["euler_angles_radians"]["x"] = to_string(pose.getEulerAngles().x + M_PI / 2);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Y_UP"]["euler_angles_radians"]["y"] = to_string(pose.getEulerAngles().y);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Y_UP"]["euler_angles_radians"]["z"] = to_string(pose.getEulerAngles().z);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Y_UP"]["euler_angles_degrees"]["x"] = to_string(double((pose.getEulerAngles().x) + (M_PI / 2)) * 180.0 / M_PI);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Y_UP"]["euler_angles_degrees"]["y"] = to_string(pose.getEulerAngles().y * 180.0 / M_PI);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Y_UP"]["euler_angles_degrees"]["z"] = to_string(pose.getEulerAngles().z * 180.0 / M_PI);
+        j["zed_" + std::to_string(it.id)]["RIGHT_HANDED_Y_UP"]["example_applications"] = "Maya";
+
         cout << "ZED " << it.id << " is relocated\n";
+        std::string position_txt = "Aruco x: " + to_string(pose.tx) + "; y: " + to_string(pose.ty) + "; z: " + to_string(pose.tz);
+        std::cout << position_txt << std::endl;
+        cout << "ZED " << it.id << " translation :" << pose.getTranslation() << std::endl;
+        cout << "ZED " << it.id << " rotation :" << pose.getEulerAngles() << std::endl;
     }
 }
 
@@ -241,6 +291,7 @@ void displayMarker(CameraData &it, ArucoData &acuroData) {
         cv::aruco::drawAxis(it.im_left_ocv_rgb, it.camera_matrix, it.dist_coeffs, rvecs[0], tvecs[0], acuroData.marker_length * 0.5f);
     }
 
+    cv::namedWindow(it.info, cv::WINDOW_OPENGL);
     cv::imshow(it.info, it.im_left_ocv_rgb);
     cv::waitKey(10);
 }
