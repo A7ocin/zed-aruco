@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
 
     ArucoData acuroData;
     acuroData.dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_1000);
-    acuroData.marker_length = 0.28f; //0.2625f; // 0.558f; // Size real size of the maker in meter
+    acuroData.marker_length = 0.2625f; //0.2625f; // 0.558f; // Size real size of the maker in meter
 
     cout << "Make sure the ArUco marker is a 6x6 (1000), measuring " << acuroData.marker_length * 1000 << " mm" << endl;
 
